@@ -1,0 +1,67 @@
+#version 400 core
+
+in vec2 pass_textureCoords;
+in vec3 toLightVector[4];
+in vec3 surfaceNormal;
+in vec3 toCameraVector;
+
+out vec4 out_color;
+
+uniform sampler2D blendmap;
+uniform sampler2D grass;
+uniform sampler2D grassflowers;
+uniform sampler2D mud;
+uniform sampler2D path;
+
+uniform vec3 lightColor[4];
+uniform vec3 attenuation[4];
+uniform vec3 facingDirection;
+
+uniform float reflectivity;
+uniform float shineDamper;
+
+void main(){
+	
+	vec3 unitNormal = normalize(surfaceNormal);
+	vec3 unitToCameraVector = normalize(toCameraVector);
+	vec3 totalDiffuse = vec3(0.0);
+	vec3 totalSpecular = vec3(0.0);
+	
+	for(int i = 0; i < 4; i++){
+		
+		float distance = length(toLightVector[i]);
+		float attenuationFactor = attenuation[i].x + (attenuation[i].y * distance) + (attenuation[i].z * distance * distance);
+		
+		//Diffuse lighting
+		vec3 unitToLightVector = normalize(toLightVector[i]);
+		float dotProd = dot(unitNormal,unitToLightVector);
+		float brightness = max(dotProd, 0.0);
+		totalDiffuse = totalDiffuse + (brightness * lightColor[i]) / attenuationFactor;
+			
+		//Specular lighting		
+		vec3 lightDirection = -unitToLightVector;
+		vec3 reflectedLight = reflect(lightDirection,unitNormal);
+		
+		float specularFactor = dot(reflectedLight, unitToCameraVector);
+		specularFactor = max(specularFactor, 0.0);
+		float dampedSpecular = pow(specularFactor, shineDamper);
+		totalSpecular = totalSpecular + (dampedSpecular * reflectivity * lightColor[i]) / attenuationFactor;
+	}	
+	
+	totalDiffuse = max(totalDiffuse, 0.3);
+	totalSpecular = max(totalSpecular,0.2);
+	
+	//Blendmapping
+	vec4 blendmapSample = texture(blendmap, pass_textureCoords);	
+	float grassAmmount = 1 - (blendmapSample.r + blendmapSample.g + blendmapSample.b);	
+	vec2 tiledCoords = pass_textureCoords * 40;	
+	vec4 grassColor = texture(grass, tiledCoords) * grassAmmount;
+	vec4 grassflowersColor = texture(grassflowers, tiledCoords) * blendmapSample.g;
+	vec4 mudColor = texture(mud, tiledCoords) * blendmapSample.r;
+	vec4 pathColor = texture(path, tiledCoords) * blendmapSample.b;	
+	vec4 textureColor = grassColor + grassflowersColor + mudColor + pathColor;
+	
+	
+	out_color = (vec4(totalDiffuse, 1.0) * textureColor); //+ vec4(totalSpecular,1.0);
+
+}
